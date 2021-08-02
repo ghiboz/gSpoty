@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net5.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>spotify.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="spotify.ico" />
+    <None Remove="spotify.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MaterialDesignThemes" Version="4.1.0" />
+    <PackageReference Include="SpotifyAPI.Web" Version="6.2.0" />
+    <PackageReference Include="SpotifyAPI.Web.auth" Version="6.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="spotify.ico" />
+    <Resource Include="spotify.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="spotify.json">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
