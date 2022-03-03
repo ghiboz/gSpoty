@@ -23,6 +23,8 @@ namespace gSpoty
     public partial class MainWindow : Window
     {
         int imgSize = 100;
+        int imgSizeBig = 3000;
+
         public MainWindow()
         {
             int margin = 10;
@@ -61,6 +63,7 @@ namespace gSpoty
             }));
 
             var img = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSize, imgSize);
+            var imgBig = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSizeBig, imgSizeBig);
             var ar = GetNameClean(track.Artists.FirstOrDefault().Name);
             var al =GetNameClean(track.Album.Name);
             imgMain.Dispatcher.BeginInvoke(new Action(() =>
@@ -75,7 +78,7 @@ namespace gSpoty
                 CheckPath(fileName);
                 using (WebClient client = new WebClient())
                 {
-                    client.DownloadFileAsync(bitmap.UriSource, fileName);
+                    client.DownloadFileAsync(new Uri(imgBig.Url, UriKind.Absolute), fileName);
                 }
             }
             ));
