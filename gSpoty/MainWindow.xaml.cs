@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -50,6 +52,7 @@ namespace gSpoty
         {
             var track = obj as SpotifyAPI.Web.FullTrack;
             var newLbl = $"{S4UUtility.GetTrackString(track)}";
+
             //lblMain.Dispatcher  .Text = $"{S4UUtility.GetTrackString(obj as SpotifyAPI.Web.FullTrack)}";
 
             lblMain.Dispatcher.BeginInvoke(new Action(() =>
@@ -58,7 +61,8 @@ namespace gSpoty
             }));
 
             var img = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSize, imgSize);
-
+            var ar = GetNameClean(track.Artists.FirstOrDefault().Name);
+            var al =GetNameClean(track.Album.Name);
             imgMain.Dispatcher.BeginInvoke(new Action(() =>
             {
                 BitmapImage bitmap = new BitmapImage();
@@ -66,8 +70,32 @@ namespace gSpoty
                 bitmap.UriSource = new Uri(img.Url, UriKind.Absolute);
                 bitmap.EndInit();
                 imgMain.Source = bitmap;
+
+                var fileName = $@"Cover\{ar}\{al}.jpg";
+                CheckPath(fileName);
+                using (WebClient client = new WebClient())
+                {
+                    client.DownloadFileAsync(bitmap.UriSource, fileName);
+                }
             }
             ));
+        }
+
+        string GetNameClean(string src)
+        {
+            string invalidChars = System.Text.RegularExpressions.Regex.Escape(new string(System.IO.Path.GetInvalidFileNameChars()));
+            string invalidRegStr = string.Format(@"([{0}]*\.+$)|([{0}]+)", invalidChars);
+
+            return System.Text.RegularExpressions.Regex.Replace(src, invalidRegStr, "_");
+        }
+
+        void CheckPath(string path)
+        {
+            var folder = System.IO.Path.GetDirectoryName(path);
+            if (!Directory.Exists(folder))
+            {
+                Directory.CreateDirectory(folder);
+            }
         }
 
         private void imgMain_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
