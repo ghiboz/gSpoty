@@ -74,7 +74,7 @@ namespace gSpoty
                 bitmap.EndInit();
                 imgMain.Source = bitmap;
 
-                var fileName = $@"Cover\{ar}\{al}.jpg";
+                var fileName = $@"Cover\{ar} - {al}.jpg";
                 CheckPath(fileName);
                 using (WebClient client = new WebClient())
                 {
