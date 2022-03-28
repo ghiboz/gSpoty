@@ -66,6 +66,12 @@ namespace gSpoty
             var imgBig = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSizeBig, imgSizeBig);
             var ar = GetNameClean(track.Artists.FirstOrDefault().Name);
             var al =GetNameClean(track.Album.Name);
+
+            if (ar.StartsWith("The "))
+            {
+                ar = ar.Substring(4);
+            }
+
             imgMain.Dispatcher.BeginInvoke(new Action(() =>
             {
                 BitmapImage bitmap = new BitmapImage();
