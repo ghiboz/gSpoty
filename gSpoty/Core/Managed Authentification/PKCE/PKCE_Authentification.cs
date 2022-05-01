@@ -50,7 +50,7 @@ public class PKCE_Authentification : IServiceAuthenticator
             _clientID = authConfig.ClientID;
 
             // Start server with config values
-            //_server = new EmbedIOAuthServer(new Uri(authConfig.RedirectUri), authConfig.ServerPort);
+            _server = new EmbedIOAuthServer(new Uri(authConfig.RedirectUri), authConfig.ServerPort);
             //File.WriteAllText("spotify2.json", JsonConvert.SerializeObject(authConfig));
         }
 
