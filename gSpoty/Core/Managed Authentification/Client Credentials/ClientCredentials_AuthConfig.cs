@@ -23,4 +23,8 @@ public class ClientCredentials_AuthConfig : AuthorizationConfig
     /// </summary>
     public int ServerPort = 5000;
 
+    /// <summary>
+    /// Cover folder to use
+    /// </summary>
+    public string CoverFolder = "";
 }

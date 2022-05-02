@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -24,6 +25,7 @@ namespace gSpoty
     {
         int imgSize = 100;
         int imgSizeBig = 3000;
+        string coverFolder = "Cover";
 
         public MainWindow()
         {
@@ -40,6 +42,12 @@ namespace gSpoty
             var l = new SpotifyPlayerListener();
             l.OnPlayingItemChanged += L_OnPlayingItemChanged;
             l.OnSpotifyUpdate += L_OnSpotifyUpdate;
+            string cfg = File.ReadAllText("spotify.json");
+            var authConfig = JsonConvert.DeserializeObject<ClientCredentials_AuthConfig>(cfg);
+            if (!string.IsNullOrEmpty(authConfig.CoverFolder))
+            {
+                coverFolder = authConfig.CoverFolder;
+            }
         }
 
         private void L_OnSpotifyUpdate(int obj)
@@ -80,7 +88,7 @@ namespace gSpoty
                 bitmap.EndInit();
                 imgMain.Source = bitmap;
 
-                var fileName = $@"Cover\{ar} - {al}.jpg";
+                var fileName = $@"{coverFolder}\{ar} - {al}.jpg";
                 CheckPath(fileName);
                 using (WebClient client = new WebClient())
                 {

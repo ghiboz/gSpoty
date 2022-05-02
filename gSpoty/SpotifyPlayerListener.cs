@@ -43,14 +43,13 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         base.OnSpotifyConnectionChanged(client);
 
         _client = client;
-
         // Start internal update loop
         if (_client != null && UpdateFrequencyMS > 0)
         {
             if (SpotifyService.Instance.AreScopesAuthorized(Scopes.UserReadPlaybackState))
             {
                 //!!! InvokeRepeating(nameof(FetchLatestPlayer), 0, UpdateFrequencyMS / 1000);
-                tmrUpdate = SetIntervalThread(FetchLatestPlayer, UpdateFrequencyMS); 
+                tmrUpdate = SetIntervalThread(FetchLatestPlayer, UpdateFrequencyMS);
 
                 ///FetchLatestPlayer();
                 _isInvoking = true;
