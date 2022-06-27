@@ -24,7 +24,7 @@ namespace gSpoty
     public partial class MainWindow : Window
     {
         int imgSize = 100;
-        int imgSizeBig = 3000;
+        int imgSizeBig = 640;
         string coverFolder = "Cover";
 
         public MainWindow()
@@ -61,6 +61,21 @@ namespace gSpoty
         private void L_OnPlayingItemChanged(SpotifyAPI.Web.IPlayableItem obj)
         {
             var track = obj as SpotifyAPI.Web.FullTrack;
+            if (track == null)
+            {
+                lblMain.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    lblMain.Text = "Please play this song on the radio";
+                }));
+
+                imgMain.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    imgMain.Source = null;
+                }
+                ));
+
+                return;
+            }
             var newLbl = $"{S4UUtility.GetTrackString(track)}";
 
             //lblMain.Dispatcher  .Text = $"{S4UUtility.GetTrackString(obj as SpotifyAPI.Web.FullTrack)}";
@@ -70,7 +85,7 @@ namespace gSpoty
                 lblMain.Text = newLbl;
             }));
 
-            var img = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSize, imgSize);
+            //var img = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSize, imgSize);
             var imgBig = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSizeBig, imgSizeBig);
             var ar = GetNameClean(track.Artists.FirstOrDefault().Name);
             var al =GetNameClean(track.Album.Name);
@@ -84,7 +99,7 @@ namespace gSpoty
             {
                 BitmapImage bitmap = new BitmapImage();
                 bitmap.BeginInit();
-                bitmap.UriSource = new Uri(img.Url, UriKind.Absolute);
+                bitmap.UriSource = new Uri(imgBig.Url, UriKind.Absolute);
                 bitmap.EndInit();
                 imgMain.Source = bitmap;
 
