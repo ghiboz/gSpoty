@@ -186,7 +186,7 @@ namespace gSpoty
         {
             lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
             {
-                lblUpdate.Foreground = Brushes.Yellow;
+                lblUpdate.Foreground = Brushes.DodgerBlue;
             }));
             listener.AddSongToPlaylist();
         }
@@ -195,7 +195,7 @@ namespace gSpoty
         {
             lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
             {
-                lblUpdate.Foreground = Brushes.Yellow;
+                lblUpdate.Foreground = Brushes.DodgerBlue;
             }));
             listener.AddSongToPlaylist();
         }
