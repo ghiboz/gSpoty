@@ -102,6 +102,11 @@ namespace gSpoty
                 }
                 ));
 
+                lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    lblUpdate.Foreground = Brushes.White;
+                }));
+
                 return;
             }
             var newLbl = $"{S4UUtility.GetTrackString(track)}";
