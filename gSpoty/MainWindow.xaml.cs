@@ -18,6 +18,21 @@ using System.Windows.Shapes;
 
 namespace gSpoty
 {
+    public class SimpleCommand : ICommand
+    {
+        public event EventHandler<object> Executed;
+        public bool CanExecute(object parameter)
+        {
+            return true;
+        }
+        public void Execute(object parameter)
+        {
+            if (Executed != null)
+                Executed(this, parameter);
+        }
+        public event EventHandler CanExecuteChanged;
+    }
+
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
@@ -26,6 +41,7 @@ namespace gSpoty
         int imgSize = 100;
         int imgSizeBig = 640;
         string coverFolder = "Cover";
+        SpotifyPlayerListener listener;
 
         public MainWindow()
         {
@@ -38,12 +54,15 @@ namespace gSpoty
             };
 
             InitializeComponent();
-            imgSize = (int)imgMain.Width;
-            var l = new SpotifyPlayerListener();
-            l.OnPlayingItemChanged += L_OnPlayingItemChanged;
-            l.OnSpotifyUpdate += L_OnSpotifyUpdate;
+
             string cfg = File.ReadAllText("spotify.json");
             var authConfig = JsonConvert.DeserializeObject<ClientCredentials_AuthConfig>(cfg);
+            var playlist = authConfig.PlayList;
+
+            imgSize = (int)imgMain.Width;
+            listener = new SpotifyPlayerListener(playlist);
+            listener.OnPlayingItemChanged += L_OnPlayingItemChanged;
+            listener.OnSpotifyUpdate += L_OnSpotifyUpdate;
             if (!string.IsNullOrEmpty(authConfig.CoverFolder))
             {
                 coverFolder = authConfig.CoverFolder;
@@ -142,6 +161,16 @@ namespace gSpoty
             lblMain.Foreground = white ? Brushes.Black : Brushes.White;
             lblUpdate.Foreground = lblMain.Foreground;
             white = !white;
+        }
+
+        private void lblUpdate_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            listener.AddSongToPlaylist();
+        }
+
+        private void DoubleClickOnImage(object sender, object e)
+        {
+            listener.AddSongToPlaylist();
         }
     }
 }

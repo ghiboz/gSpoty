@@ -32,9 +32,12 @@ public class SpotifyPlayerListener : SpotifyServiceListener
     private bool _isInvoking = false;
     private System.Timers.Timer tmrUpdate;
     private int cntUpdate = 0;
+    private string playlist;
+    private IPlayableItem currentItem;
 
-    public SpotifyPlayerListener()
+    public SpotifyPlayerListener(string playlist)
     {
+        this.playlist = playlist;
         this.OnPlayingItemChanged += PlayingItemChanged;
     }
 
@@ -70,6 +73,13 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         }
     }
 
+    public void AddSongToPlaylist()
+    {
+        var track = currentItem as FullTrack;
+        var item = new PlaylistAddItemsRequest(new List<string>() { track.Uri });
+        _client.Playlists.AddItems(playlist, item);
+    }
+
     public static System.Timers.Timer SetIntervalThread(Action Act, float interval)
     {
         var tmr = new System.Timers.Timer();
@@ -84,6 +94,7 @@ public class SpotifyPlayerListener : SpotifyServiceListener
     protected virtual void PlayingItemChanged(IPlayableItem item)
     {
         // Override me.
+        currentItem = item;
     }
 
     private int MaxMin(int value, int min, int max)

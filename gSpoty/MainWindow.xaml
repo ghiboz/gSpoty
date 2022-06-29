@@ -25,12 +25,20 @@
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" VerticalAlignment="Bottom">
-            <TextBlock Name="lblUpdate">0</TextBlock>
+            <TextBlock Name="lblUpdate" MouseRightButtonUp="lblUpdate_MouseRightButtonUp">0</TextBlock>
             <TextBlock Name="lblMain" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" VerticalAlignment="Stretch" MouseRightButtonUp="lblMain_MouseRightButtonUp">
                 Please play this song on the radio
             </TextBlock>
         </StackPanel>
-        
-        <Image Grid.Column="1" Width="200" Height="200" Name="imgMain" MouseRightButtonUp="imgMain_MouseRightButtonUp"/>
+
+        <Image Grid.Column="1" Width="200" Height="200" Name="imgMain" MouseRightButtonUp="imgMain_MouseRightButtonUp">
+            <Image.InputBindings>
+                <MouseBinding MouseAction="LeftDoubleClick">
+                    <MouseBinding.Command>
+                        <local:SimpleCommand Executed="DoubleClickOnImage" />
+                    </MouseBinding.Command>
+                </MouseBinding>
+            </Image.InputBindings>
+        </Image>
     </Grid>
 </Window>

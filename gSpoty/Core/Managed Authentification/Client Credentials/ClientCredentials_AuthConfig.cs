@@ -27,4 +27,9 @@ public class ClientCredentials_AuthConfig : AuthorizationConfig
     /// Cover folder to use
     /// </summary>
     public string CoverFolder = "";
+
+    /// <summary>
+    /// playlist id where store songs
+    /// </summary>
+    public string PlayList = "";
 }
