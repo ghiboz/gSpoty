@@ -61,15 +61,24 @@ namespace gSpoty
 
             imgSize = (int)imgMain.Width;
             listener = new SpotifyPlayerListener(playlist);
-            listener.OnPlayingItemChanged += L_OnPlayingItemChanged;
-            listener.OnSpotifyUpdate += L_OnSpotifyUpdate;
+            listener.OnPlayingItemChanged += Listener_OnPlayingItemChanged;
+            listener.OnSpotifyUpdate += Listener_OnSpotifyUpdate;
+            listener.OnSongAddedToPlayList += Listener_OnSongAddedToPlayList;
             if (!string.IsNullOrEmpty(authConfig.CoverFolder))
             {
                 coverFolder = authConfig.CoverFolder;
             }
         }
 
-        private void L_OnSpotifyUpdate(int obj)
+        private void Listener_OnSongAddedToPlayList(bool hasAdded)
+        {
+            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
+            { 
+                lblUpdate.Foreground = hasAdded ? Brushes.Lime : Brushes.Orange;
+            }));
+        }
+
+        private void Listener_OnSpotifyUpdate(int obj)
         {
             lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -77,7 +86,7 @@ namespace gSpoty
             }));
         }
 
-        private void L_OnPlayingItemChanged(SpotifyAPI.Web.IPlayableItem obj)
+        private void Listener_OnPlayingItemChanged(SpotifyAPI.Web.IPlayableItem obj)
         {
             var track = obj as SpotifyAPI.Web.FullTrack;
             if (track == null)
@@ -102,6 +111,11 @@ namespace gSpoty
             lblMain.Dispatcher.BeginInvoke(new Action(() =>
             {
                 lblMain.Text = newLbl;
+            }));
+
+            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                lblUpdate.Foreground = Brushes.White;
             }));
 
             //var img = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSize, imgSize);
@@ -165,11 +179,19 @@ namespace gSpoty
 
         private void lblUpdate_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
         {
+            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                lblUpdate.Foreground = Brushes.Yellow;
+            }));
             listener.AddSongToPlaylist();
         }
 
         private void DoubleClickOnImage(object sender, object e)
         {
+            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                lblUpdate.Foreground = Brushes.Yellow;
+            }));
             listener.AddSongToPlaylist();
         }
     }

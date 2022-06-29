@@ -20,6 +20,7 @@ public class SpotifyPlayerListener : SpotifyServiceListener
     /// </summary>
     public event Action<IPlayableItem> OnPlayingItemChanged;
     public event Action<int> OnSpotifyUpdate;
+    public event Action<bool> OnSongAddedToPlayList;
 
     // Current connected spotify client
     private SpotifyClient _client;
@@ -73,11 +74,43 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         }
     }
 
-    public void AddSongToPlaylist()
+    public async void AddSongToPlaylist()
     {
         var track = currentItem as FullTrack;
         var item = new PlaylistAddItemsRequest(new List<string>() { track.Uri });
-        _client.Playlists.AddItems(playlist, item);
+
+        bool addSong = true;
+        var pl = await _client.Playlists.Get(playlist);
+        int totalSongs = pl.Tracks.Total.Value;
+        int loops = Convert.ToInt32(Math.Ceiling(totalSongs / (decimal)pl.Tracks.Limit.Value));
+        for (int i = 0; i < loops; i++)
+        {
+            var req = new PlaylistGetItemsRequest(PlaylistGetItemsRequest.AdditionalTypes.Track);
+            req.Limit = pl.Tracks.Limit.Value;
+            req.Offset = i * req.Limit;
+            var q = req.BuildQueryParams();
+
+            var playlistItems = await _client.Playlists.GetItems(playlist, req);
+            foreach (var songInPlaylist in playlistItems.Items)
+            {
+                var song = songInPlaylist.Track as FullTrack;
+                
+                if (song.Album.Name.Equals(track.Album.Name)
+                    && song.Name.Equals(track.Name)
+                    && song.Artists[0].Name.Equals(track.Artists[0].Name))
+                {
+                    addSong = false;
+                    i = loops;
+                    break;
+                }
+            }
+        }
+
+        if (addSong)
+        {
+            await _client.Playlists.AddItems(playlist, item);
+        }
+        OnSongAddedToPlayList?.Invoke(addSong);
     }
 
     public static System.Timers.Timer SetIntervalThread(Action Act, float interval)
