@@ -52,7 +52,7 @@ namespace gSpoty
             {
                 var r = SystemParameters.WorkArea;
                 Left = r.Right - ActualWidth - margin;
-                Top =  r.Bottom - ActualHeight - margin;
+                Top = r.Bottom - ActualHeight - margin;
             };
 
             InitializeComponent();
