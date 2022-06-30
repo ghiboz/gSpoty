@@ -21,6 +21,7 @@ public class SpotifyPlayerListener : SpotifyServiceListener
     public event Action<IPlayableItem> OnPlayingItemChanged;
     public event Action<int> OnSpotifyUpdate;
     public event Action<bool> OnSongAddedToPlayList;
+    public event Action<double> OnSongPlaying;
 
     // Current connected spotify client
     private SpotifyClient _client;
@@ -167,7 +168,9 @@ public class SpotifyPlayerListener : SpotifyServiceListener
                     var duration = currentTrack.DurationMs;
                     var progress = newContext.ProgressMs;
                     var remain = duration - progress;
-                    var nextCheck = MaxMin(remain / 2, 5000, 30000);
+                    var nextCheck = MaxMin(remain / 2, 500, 10000);
+
+                    OnSongPlaying?.Invoke(progress / (double)duration);
 
                     tmrUpdate.Interval = nextCheck;
                     OnSpotifyUpdate?.Invoke(++cntUpdate);

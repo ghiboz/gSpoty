@@ -18,6 +18,9 @@
     <Window.Background>
         <SolidColorBrush Opacity="0.5" />
     </Window.Background>
+    <Window.TaskbarItemInfo>
+        <TaskbarItemInfo x:Name="tbInfo"></TaskbarItemInfo>
+    </Window.TaskbarItemInfo>
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
@@ -26,7 +29,7 @@
 
         <StackPanel Grid.Column="0" VerticalAlignment="Bottom">
             <TextBlock Name="lblUpdate" MouseRightButtonUp="lblUpdate_MouseRightButtonUp">0</TextBlock>
-            <TextBlock Name="lblMain" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" VerticalAlignment="Stretch" MouseRightButtonUp="lblMain_MouseRightButtonUp">
+            <TextBlock Name="lblMain" Style="{DynamicResource MaterialDesignHeadline5TextBlock}" VerticalAlignment="Stretch" MouseRightButtonUp="lblMain_MouseRightButtonUp">
                 Please play this song on the radio
             </TextBlock>
         </StackPanel>

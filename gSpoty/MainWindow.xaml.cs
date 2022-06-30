@@ -15,6 +15,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Windows.Shell;
 
 namespace gSpoty
 {
@@ -32,6 +33,7 @@ namespace gSpoty
         }
         public event EventHandler CanExecuteChanged;
     }
+
 
     /// <summary>
     /// Interaction logic for MainWindow.xaml
@@ -64,10 +66,20 @@ namespace gSpoty
             listener.OnPlayingItemChanged += Listener_OnPlayingItemChanged;
             listener.OnSpotifyUpdate += Listener_OnSpotifyUpdate;
             listener.OnSongAddedToPlayList += Listener_OnSongAddedToPlayList;
+            listener.OnSongPlaying += Listener_OnSongPlaying;
             if (!string.IsNullOrEmpty(authConfig.CoverFolder))
             {
                 coverFolder = authConfig.CoverFolder;
             }
+        }
+
+        private void Listener_OnSongPlaying(double value)
+        {
+            tbInfo.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                tbInfo.ProgressState = TaskbarItemProgressState.Normal;
+                tbInfo.ProgressValue = value;
+            }));
         }
 
         private void Listener_OnSongAddedToPlayList(bool hasAdded)
@@ -82,7 +94,7 @@ namespace gSpoty
         {
             lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
             {
-                lblUpdate.Text = $"{obj}";
+                lblUpdate.Text = $"♦{obj}♦";
             }));
         }
 
