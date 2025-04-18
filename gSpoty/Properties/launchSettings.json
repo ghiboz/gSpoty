@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "gSpoty": {
+      "commandName": "Project",
+      "commandLineArgs": "-BACKGROUND 800"
+    }
+  }
+}

@@ -32,4 +32,9 @@ public class ClientCredentials_AuthConfig : AuthorizationConfig
     /// playlist id where store songs
     /// </summary>
     public string PlayList = "";
+
+    /// <summary>
+    /// playlist id where remove songs
+    /// </summary>
+    public string PlayListNew = "";
 }

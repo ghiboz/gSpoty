@@ -24,7 +24,7 @@
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="200"/>
+            <ColumnDefinition x:Name="colImg" Width="200"/>
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" VerticalAlignment="Bottom">
@@ -34,7 +34,7 @@
             </TextBlock>
         </StackPanel>
 
-        <Image Grid.Column="1" Width="200" Height="200" Name="imgMain" MouseRightButtonUp="imgMain_MouseRightButtonUp">
+        <Image Grid.Column="1" Width="200" Height="200" Name="imgMain" MouseRightButtonUp="imgMain_MouseRightButtonUp" Stretch="Fill">
             <Image.InputBindings>
                 <MouseBinding MouseAction="LeftDoubleClick">
                     <MouseBinding.Command>

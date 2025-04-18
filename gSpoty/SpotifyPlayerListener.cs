@@ -35,11 +35,13 @@ public class SpotifyPlayerListener : SpotifyServiceListener
     private System.Timers.Timer tmrUpdate;
     private int cntUpdate = 0;
     private string playlist;
+    private string playlistNew;
     private IPlayableItem currentItem;
 
-    public SpotifyPlayerListener(string playlist)
+    public SpotifyPlayerListener(string playlist, string playlistNew)
     {
         this.playlist = playlist;
+        this.playlistNew = playlistNew;
         this.OnPlayingItemChanged += PlayingItemChanged;
     }
 
@@ -79,10 +81,16 @@ public class SpotifyPlayerListener : SpotifyServiceListener
     {
         var track = currentItem as FullTrack;
         var item = new PlaylistAddItemsRequest(new List<string>() { track.Uri });
+        var itemRemove = new PlaylistRemoveItemsRequest();
+       
 
         bool addSong = true;
         var pl = await _client.Playlists.Get(playlist);
+        var plNew = await _client.Playlists.Get(playlistNew);
+
         int totalSongs = pl.Tracks.Total.Value;
+        int totalSongsNew = plNew.Tracks.Total.Value;
+
         int loops = Convert.ToInt32(Math.Ceiling(totalSongs / (decimal)pl.Tracks.Limit.Value));
         for (int i = 0; i < loops; i++)
         {
@@ -95,7 +103,6 @@ public class SpotifyPlayerListener : SpotifyServiceListener
             foreach (var songInPlaylist in playlistItems.Items)
             {
                 var song = songInPlaylist.Track as FullTrack;
-                
                 if (song.Album.Name.Equals(track.Album.Name)
                     && song.Name.Equals(track.Name)
                     && song.Artists[0].Name.Equals(track.Artists[0].Name))
@@ -110,6 +117,20 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         if (addSong)
         {
             await _client.Playlists.AddItems(playlist, item);
+
+            // remove the item to the playlist
+            var itemsToRemove = new PlaylistRemoveItemsRequest
+            {
+                Tracks = new List<PlaylistRemoveItemsRequest.Item>
+                {
+                    new PlaylistRemoveItemsRequest.Item
+                    {
+                        Uri = track.Uri
+                    }
+                }
+            };
+            await _client.Playlists.RemoveItems(playlistNew, itemsToRemove);
+
         }
         OnSongAddedToPlayList?.Invoke(addSong);
     }

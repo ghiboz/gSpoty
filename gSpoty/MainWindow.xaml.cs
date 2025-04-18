@@ -42,11 +42,30 @@ namespace gSpoty
     {
         int imgSize = 100;
         int imgSizeBig = 640;
+        int BKG_ADD = 400;
         string coverFolder = "Cover";
         SpotifyPlayerListener listener;
 
+        bool inBackground = false;
         public MainWindow()
         {
+            string[] args = Environment.GetCommandLineArgs();
+            inBackground = args.Contains("-BACKGROUND");
+
+            if (inBackground)
+            {
+                bool nextOne = false;
+                foreach (var item in args)
+                {
+                    if (nextOne)
+                    {
+                        Int32.TryParse(item, out BKG_ADD);
+                        break;
+                    }
+                    nextOne = item == "-BACKGROUND";
+                }
+            }
+
             int margin = 10;
             SizeChanged += (o, e) =>
             {
@@ -57,12 +76,23 @@ namespace gSpoty
 
             InitializeComponent();
 
+            if (inBackground)
+            {
+                Height += BKG_ADD;
+                Width += BKG_ADD;
+                imgMain.Width += BKG_ADD;
+                imgMain.Height += BKG_ADD;
+                colImg.Width = new GridLength(colImg.Width.Value + BKG_ADD);
+                Topmost = false;
+            }
+
             string cfg = File.ReadAllText("spotify.json");
             var authConfig = JsonConvert.DeserializeObject<ClientCredentials_AuthConfig>(cfg);
             var playlist = authConfig.PlayList;
+            var playlistNew = authConfig.PlayListNew;
 
             imgSize = (int)imgMain.Width;
-            listener = new SpotifyPlayerListener(playlist);
+            listener = new SpotifyPlayerListener(playlist, playlistNew);
             listener.OnPlayingItemChanged += Listener_OnPlayingItemChanged;
             listener.OnSpotifyUpdate += Listener_OnSpotifyUpdate;
             listener.OnSongAddedToPlayList += Listener_OnSongAddedToPlayList;
