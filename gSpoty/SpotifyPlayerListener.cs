@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
+using System.Windows.Controls.Primitives;
 
 /// <summary>
 /// Listener class for listening to the current playing context on Spotify 
@@ -75,6 +76,24 @@ public class SpotifyPlayerListener : SpotifyServiceListener
             // Invoke playing item changed, no more client, no more context
             OnPlayingItemChanged?.Invoke(null);
         }
+    }
+
+    public async void RemoveSongFromPlaylist()
+    {
+        var track = currentItem as FullTrack;
+        var itemRemove = new PlaylistRemoveItemsRequest();
+        // remove the item to the playlist
+        var itemsToRemove = new PlaylistRemoveItemsRequest
+        {
+            Tracks = new List<PlaylistRemoveItemsRequest.Item>
+                {
+                    new PlaylistRemoveItemsRequest.Item
+                    {
+                        Uri = track.Uri
+                    }
+                }
+        };
+        await _client.Playlists.RemoveItems(playlistNew, itemsToRemove);
     }
 
     public async void AddSongToPlaylist()

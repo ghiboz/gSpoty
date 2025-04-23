@@ -241,5 +241,23 @@ namespace gSpoty
             }));
             listener.AddSongToPlaylist();
         }
+
+        private void Add_Click(object sender, RoutedEventArgs e)
+        {
+            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                lblUpdate.Foreground = Brushes.DodgerBlue;
+            }));
+            listener.AddSongToPlaylist();
+        }
+
+        private void Remove_Click(object sender, RoutedEventArgs e)
+        {
+            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                lblUpdate.Foreground = Brushes.OrangeRed;
+            }));
+            listener.RemoveSongFromPlaylist();
+        }
     }
 }

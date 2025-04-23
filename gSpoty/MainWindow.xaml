@@ -28,6 +28,10 @@
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" VerticalAlignment="Bottom">
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="btnAdd" Width="90" HorizontalAlignment="Left" Content="Add" Click="Add_Click" Margin="0 0 20 0"></Button>
+                <Button x:Name="btnRemove" Width="90" HorizontalAlignment="Left" Content="Remove" Click="Remove_Click"></Button>
+            </StackPanel>
             <TextBlock Name="lblUpdate" MouseRightButtonUp="lblUpdate_MouseRightButtonUp">0</TextBlock>
             <TextBlock Name="lblMain" Style="{DynamicResource MaterialDesignHeadline5TextBlock}" VerticalAlignment="Stretch" MouseRightButtonUp="lblMain_MouseRightButtonUp">
                 Please play this song on the radio
