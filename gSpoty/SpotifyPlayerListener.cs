@@ -2,7 +2,11 @@ using SpotifyAPI.Web;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Controls.Primitives;
 
 /// <summary>
@@ -94,6 +98,163 @@ public class SpotifyPlayerListener : SpotifyServiceListener
                 }
         };
         await _client.Playlists.RemoveItems(playlistNew, itemsToRemove);
+    }
+
+    public async Task<FullAlbum> GetAlbum(string albumId)
+    {
+        var album = await _client.Albums.Get(albumId);
+        return album;
+    }
+
+    public async Task<List<SimpleAlbum>> GetAlbumsWithTrackStartingWith(string artistId, string startTrack)
+    {
+        var matchingAlbums = new List<SimpleAlbum>();
+
+        // 1. Recupera tutti gli album dell'artista
+        var albumsPage = await _client.Artists.GetAlbums(artistId, new ArtistsAlbumsRequest
+        {
+            IncludeGroupsParam = ArtistsAlbumsRequest.IncludeGroups.Album,
+            Limit = 50
+        });
+
+        var allAlbums = new List<SimpleAlbum>();
+
+        // Pagina attraverso tutti gli album
+        await foreach (var album in _client.Paginate(albumsPage))
+        {
+            allAlbums.Add(album);
+        }
+
+        // 2. Per ogni album, controlla se contiene una traccia che inizia con startTrack
+        foreach (var album in allAlbums)
+        {
+            var tracksPage = await _client.Albums.GetTracks(album.Id, new AlbumTracksRequest
+            {
+                Limit = 50
+            });
+
+            bool found = false;
+
+            await foreach (var track in _client.Paginate(tracksPage))
+            {
+                if (track.Name.StartsWith(startTrack, StringComparison.OrdinalIgnoreCase))
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (found)
+                matchingAlbums.Add(album);
+        }
+
+        return matchingAlbums;
+    }
+
+    public async Task<FullAlbum?> GetRealAlbum(FullTrack track)
+    {
+        if (track.Album.AlbumType == "album")
+        {
+            return await _client.Albums.Get(track.Album.Id);
+        }
+
+        var search = await _client.Search.Item(new SearchRequest(SearchRequest.Types.Album, track.Album.Name)
+        {
+            Limit = 50
+        });
+
+        var matchingAlbum = search.Albums.Items?
+            .Where(a => a.AlbumType == "album") // esclude "single" e "compilation"
+            .FirstOrDefault(a => a.Artists.Any(artist => 
+                track.Artists.Any(trackArtist => 
+                    trackArtist.Id == artist.Id))); // confronta per ID, più affidabile del nome
+
+        if (matchingAlbum == null)
+        {
+            var oldest_album = await GetOldestAlbumContainingTrack(track);
+            if (oldest_album != null)
+            {
+                return oldest_album;
+            }
+            else
+            {
+                // last try
+                var real_track_name = Regex.Replace(track.Name, @"[\(\[\{][^\)\]\}]*[\)\]\}]", "").Trim();
+                var albums = GetAlbumsWithTrackStartingWith(track.Artists[0].Id, real_track_name).GetAwaiter().GetResult();
+
+                var oldestAlbum = albums
+                    .Where(a => a.AlbumType == "album")
+                    .OrderBy(t => t.ReleaseDate)
+                    .First();
+
+                if (oldestAlbum != null)
+                {
+                    return await _client.Albums.Get(oldestAlbum.Id);
+                }
+
+                return await _client.Albums.Get(track.Album.Id);
+            }
+        }
+        // Ritorna il FullAlbum con tutte le immagini corrette
+        return await _client.Albums.Get(matchingAlbum.Id);
+    }
+
+    public async Task<FullAlbum?> GetOldestAlbumContainingTrack(FullTrack track)
+    {
+        // Cerca la traccia per titolo e artista
+        var artistName = track.Artists.FirstOrDefault()?.Name ?? "";
+        var search = await _client.Search.Item(new SearchRequest(SearchRequest.Types.Track, $"{track.Name} artist:{artistName}")
+        {
+            Limit = 50
+        });
+
+        if (search.Tracks.Items == null || !search.Tracks.Items.Any()) return null;
+
+        // Filtra solo le tracce che matchano esattamente per ID artista e nome
+        var matchingTracks = search.Tracks.Items
+            .Where(t => t.Name.Equals(track.Name, StringComparison.OrdinalIgnoreCase))
+            .Where(t => t.Artists.Any(a => track.Artists.Any(ta => ta.Id == a.Id)))
+            .Where(t => t.Artists.Count == 1)
+            .Where(t => t.Album.AlbumType == "album") // solo album, no single/compilation
+            .ToList();
+
+        if (!matchingTracks.Any())
+        {
+            matchingTracks = search.Tracks.Items
+            .Where(t => t.Name.Equals(track.Name, StringComparison.OrdinalIgnoreCase))
+            .Where(t => t.Artists.Any(a => track.Artists.Any(ta => ta.Id == a.Id)))
+            //.Where(t => t.Album.AlbumType == "album")
+            .Where(t => t.Album.Images.Any(img => img.Width != null && img.Height != null && img.Width == img.Height)) // solo album con copertina quadrata
+            .ToList();
+
+            if (!matchingTracks.Any()) return null;
+        }
+
+        // Trova l'album più vecchio confrontando le date di uscita
+        var oldestTrack = matchingTracks
+            .OrderBy(t => t.Album.ReleaseDate) // formato "YYYY-MM-DD" o "YYYY", ordinabile come stringa
+            .First();
+
+        return await _client.Albums.Get(oldestTrack.Album.Id);
+    }
+
+    public async Task<FullTrack> GetAlbumTrack(FullTrack track)
+    {
+        var search = await _client.Search.Item(new SearchRequest(SearchRequest.Types.Track, track.Name)
+        {
+            Limit = 10
+        });
+        var correctTrack = search.Tracks.Items
+        .Where(t =>
+            t.Artists.First().Id == track.Artists.First().Id &&
+            t.Album.AlbumType == "album").OrderBy(o => o.Album.ReleaseDate) // <-- chiave!
+        .FirstOrDefault();
+
+        if (correctTrack == null)
+        {
+            return track;
+        }
+        return correctTrack;
     }
 
     public async void AddSongToPlaylist()

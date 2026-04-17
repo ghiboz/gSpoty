@@ -165,32 +165,50 @@ namespace gSpoty
                 lblUpdate.Foreground = Brushes.White;
             }));
 
-            //var img = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSize, imgSize);
-            var imgBig = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSizeBig, imgSizeBig);
-            var ar = GetNameClean(track.Artists.FirstOrDefault().Name);
-            var al =GetNameClean(track.Album.Name);
-
-            if (ar.StartsWith("The "))
+            // var realTrack = listener.GetAlbumTrack(track).GetAwaiter().GetResult();
+            
+            // img 
+            //var album = listener.GetAlbum(track.Album.Id).GetAwaiter().GetResult();
+            var album = listener.GetRealAlbum(track).GetAwaiter().GetResult();
+            if (album != null)
             {
-                ar = ar.Substring(4);
-            }
+                var albumOnlyImages = album.Images;
+                //                    .Where(img => img.Width == null || img.Height == null || img.Width == img.Height)
+                //                    .ToList();
 
-            imgMain.Dispatcher.BeginInvoke(new Action(() =>
-            {
-                BitmapImage bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.UriSource = new Uri(imgBig.Url, UriKind.Absolute);
-                bitmap.EndInit();
-                imgMain.Source = bitmap;
+                //var img = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSize, imgSize);
+                //            var imgBig = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSizeBig, imgSizeBig);
+                var imgBig = S4UUtility.GetLowestResolutionImage(albumOnlyImages, imgSizeBig, imgSizeBig);
 
-                var fileName = $@"{coverFolder}\{ar} - {al}.jpg";
-                CheckPath(fileName);
-                using (WebClient client = new WebClient())
+                // Fallback a tutte le immagini se il filtro svuota la lista
+                if (imgBig == null)
+                    imgBig = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSizeBig, imgSizeBig);
+
+                var ar = GetNameClean(album.Artists.FirstOrDefault().Name);
+                var al = GetNameClean(album.Name);
+
+                if (ar.StartsWith("The "))
                 {
-                    client.DownloadFileAsync(new Uri(imgBig.Url, UriKind.Absolute), fileName);
+                    ar = ar.Substring(4);
                 }
+
+                imgMain.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    BitmapImage bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.UriSource = new Uri(imgBig.Url, UriKind.Absolute);
+                    bitmap.EndInit();
+                    imgMain.Source = bitmap;
+
+                    var fileName = $@"{coverFolder}\{ar} - {al}.jpg";
+                    CheckPath(fileName);
+                    using (WebClient client = new WebClient())
+                    {
+                        client.DownloadFileAsync(new Uri(imgBig.Url, UriKind.Absolute), fileName);
+                    }
+                }
+                ));
             }
-            ));
         }
 
         string GetNameClean(string src)
