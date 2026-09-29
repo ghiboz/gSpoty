@@ -28,8 +28,8 @@
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" VerticalAlignment="Bottom">
-            <TextBlock Name="lblUpdate" MouseRightButtonUp="lblUpdate_MouseRightButtonUp">0</TextBlock>
             <DockPanel LastChildFill="True">
+                <TextBlock Name="lblUpdate" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0 0 10 0" MouseRightButtonUp="lblUpdate_MouseRightButtonUp">0</TextBlock>
                 <Button x:Name="btnAdd" DockPanel.Dock="Left" Width="90" VerticalAlignment="Center" Content="Add" Click="Add_Click" Margin="0 0 10 0"></Button>
                 <Button x:Name="btnRemove" DockPanel.Dock="Left" Width="90" VerticalAlignment="Center" Content="Remove" Click="Remove_Click" Margin="0 0 20 0"></Button>
                 <TextBlock Name="lblMain" Style="{DynamicResource MaterialDesignHeadline5TextBlock}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MouseRightButtonUp="lblMain_MouseRightButtonUp">

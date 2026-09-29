@@ -121,7 +121,7 @@ namespace gSpoty
 
         private void Listener_OnSpotifyUpdate(int obj)
         {
-            OnUI(() => lblUpdate.Text = lastError == null ? $"♦{obj}♦" : $"♦{obj}♦  {lastError}");
+            OnUI(() => lblUpdate.Text = lastError == null ? $"♦{obj}♦" : $"♦{obj}♦ ⚠");
         }
 
         private async void Listener_OnPlayingItemChanged(IPlayableItem obj)
