@@ -28,14 +28,14 @@
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" VerticalAlignment="Bottom">
-            <StackPanel Orientation="Horizontal">
-                <Button x:Name="btnAdd" Width="90" HorizontalAlignment="Left" Content="Add" Click="Add_Click" Margin="0 0 20 0"></Button>
-                <Button x:Name="btnRemove" Width="90" HorizontalAlignment="Left" Content="Remove" Click="Remove_Click"></Button>
-            </StackPanel>
             <TextBlock Name="lblUpdate" MouseRightButtonUp="lblUpdate_MouseRightButtonUp">0</TextBlock>
-            <TextBlock Name="lblMain" Style="{DynamicResource MaterialDesignHeadline5TextBlock}" VerticalAlignment="Stretch" MouseRightButtonUp="lblMain_MouseRightButtonUp">
-                Please play this song on the radio
-            </TextBlock>
+            <DockPanel LastChildFill="True">
+                <Button x:Name="btnAdd" DockPanel.Dock="Left" Width="90" VerticalAlignment="Center" Content="Add" Click="Add_Click" Margin="0 0 10 0"></Button>
+                <Button x:Name="btnRemove" DockPanel.Dock="Left" Width="90" VerticalAlignment="Center" Content="Remove" Click="Remove_Click" Margin="0 0 20 0"></Button>
+                <TextBlock Name="lblMain" Style="{DynamicResource MaterialDesignHeadline5TextBlock}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MouseRightButtonUp="lblMain_MouseRightButtonUp">
+                    Please play this song on the radio
+                </TextBlock>
+            </DockPanel>
         </StackPanel>
 
         <Image Grid.Column="1" Width="200" Height="200" Name="imgMain" MouseRightButtonUp="imgMain_MouseRightButtonUp" Stretch="Fill">
