@@ -33,7 +33,7 @@ namespace gSpoty
             else
             {
                 item.Add(s);
-                item.Add(v);
+                value.Add(v);
             }
 
         }

@@ -1,24 +1,24 @@
-using SpotifyAPI.Web;
+ï»¿using SpotifyAPI.Web;
 using System;
-using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Controls.Primitives;
 
 /// <summary>
-/// Listener class for listening to the current playing context on Spotify 
+/// Listener class for listening to the current playing context on Spotify
 /// and providing callbacks related to the context
 /// </summary>
 public class SpotifyPlayerListener : SpotifyServiceListener
 {
     /// <summary>
-    /// Amount of milliseconds for the internal player updater to poll at
+    /// Amount of milliseconds for the first poll; later polls adapt to the remaining song time
     /// </summary>
     public float UpdateFrequencyMS = 100;
+
+    // Spotify search endpoint accepts at most 10 results per type
+    private const int SearchLimit = 10;
 
     /// <summary>
     /// Triggered when a new Track or Episode is playing in the player
@@ -26,29 +26,39 @@ public class SpotifyPlayerListener : SpotifyServiceListener
     public event Action<IPlayableItem> OnPlayingItemChanged;
     public event Action<int> OnSpotifyUpdate;
     public event Action<bool> OnSongAddedToPlayList;
+    public event Action<string> OnError;
     public event Action<double> OnSongPlaying;
 
     // Current connected spotify client
     private SpotifyClient _client;
 
-    // The last retrieved context from API
-    private CurrentlyPlayingContext _currentContext;
-    // Current playing item within context
+    // Current playing item
     private IPlayableItem _currentItem;
-    // Is the internal update loop being invoked?
+    // Id of the playlist being played, null when playing from an album, artist, etc.
+    private string _contextPlaylistId;
+    // Is the internal update loop running?
     private bool _isInvoking = false;
     private System.Timers.Timer tmrUpdate;
     private int cntUpdate = 0;
-    private string playlist;
-    private string playlistNew;
-    private IPlayableItem currentItem;
+    private readonly string playlist;
+    private readonly string playlistNew;
+
+    // Original album id -> resolved "real" album
+    private readonly ConcurrentDictionary<string, FullAlbum> _albumCache = new ConcurrentDictionary<string, FullAlbum>();
 
     public SpotifyPlayerListener(string playlist, string playlistNew)
     {
         this.playlist = playlist;
         this.playlistNew = playlistNew;
-        this.OnPlayingItemChanged += PlayingItemChanged;
     }
+
+    public IPlayableItem CurrentItem => _currentItem;
+
+    /// <summary>
+    /// Playlist the current song is removed from: the one being played, or PlayListNew as fallback
+    /// </summary>
+    private string SourcePlaylist =>
+        !string.IsNullOrEmpty(_contextPlaylistId) && _contextPlaylistId != playlist ? _contextPlaylistId : playlistNew;
 
     protected override void OnSpotifyConnectionChanged(SpotifyClient client)
     {
@@ -60,10 +70,13 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         {
             if (SpotifyService.Instance.AreScopesAuthorized(Scopes.UserReadPlaybackState))
             {
-                //!!! InvokeRepeating(nameof(FetchLatestPlayer), 0, UpdateFrequencyMS / 1000);
-                tmrUpdate = SetIntervalThread(FetchLatestPlayer, UpdateFrequencyMS);
-
-                ///FetchLatestPlayer();
+                if (tmrUpdate == null)
+                {
+                    // One-shot timer, re-armed after each fetch so polls never overlap
+                    tmrUpdate = new System.Timers.Timer(UpdateFrequencyMS) { AutoReset = false };
+                    tmrUpdate.Elapsed += async (s, e) => await FetchLoop();
+                }
+                tmrUpdate.Start();
                 _isInvoking = true;
             }
             else
@@ -73,44 +86,66 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         }
         else if (_client == null && _isInvoking)
         {
-            //!!!CancelInvoke(nameof(FetchLatestPlayer));
             tmrUpdate.Stop();
             _isInvoking = false;
 
             // Invoke playing item changed, no more client, no more context
-            OnPlayingItemChanged?.Invoke(null);
+            SetCurrentItem(null);
         }
     }
 
-    public async void RemoveSongFromPlaylist()
+    private async Task FetchLoop()
     {
-        var track = currentItem as FullTrack;
-        var itemRemove = new PlaylistRemoveItemsRequest();
-        // remove the item to the playlist
-        var itemsToRemove = new PlaylistRemoveItemsRequest
+        int nextCheck = 1000;
+        try
         {
-            Tracks = new List<PlaylistRemoveItemsRequest.Item>
-                {
-                    new PlaylistRemoveItemsRequest.Item
-                    {
-                        Uri = track.Uri
-                    }
-                }
-        };
-        await _client.Playlists.RemoveItems(playlistNew, itemsToRemove);
+            nextCheck = await FetchLatestPlayer();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+        }
+
+        if (_isInvoking)
+        {
+            tmrUpdate.Interval = nextCheck;
+            tmrUpdate.Start();
+        }
     }
 
-    public async Task<FullAlbum> GetAlbum(string albumId)
+    public async Task RemoveSongFromPlaylist()
     {
-        var album = await _client.Albums.Get(albumId);
-        return album;
+        var source = SourcePlaylist;
+        if (_currentItem is not FullTrack track || string.IsNullOrEmpty(source))
+            return;
+
+        try
+        {
+            await RemoveFromPlaylist(source, track.Uri);
+        }
+        catch (Exception ex)
+        {
+            ReportError("Remove", ex);
+        }
     }
 
-    public async Task<List<SimpleAlbum>> GetAlbumsWithTrackStartingWith(string artistId, string startTrack)
+    private Task RemoveFromPlaylist(string playlistId, string uri)
     {
-        var matchingAlbums = new List<SimpleAlbum>();
+        return _client.Playlists.RemovePlaylistItems(playlistId, new PlaylistRemoveItemsRequestV2
+        {
+            Items = new List<PlaylistRemoveItemsRequestV2.Item>
+            {
+                new PlaylistRemoveItemsRequestV2.Item { Uri = uri }
+            }
+        });
+    }
 
-        // 1. Recupera tutti gli album dell'artista
+    /// <summary>
+    /// Finds the oldest studio album of the artist containing a track whose name starts with startTrack.
+    /// Albums are checked from the oldest, so it stops at the first match.
+    /// </summary>
+    private async Task<SimpleAlbum> GetOldestAlbumWithTrackStartingWith(string artistId, string startTrack)
+    {
         var albumsPage = await _client.Artists.GetAlbums(artistId, new ArtistsAlbumsRequest
         {
             IncludeGroupsParam = ArtistsAlbumsRequest.IncludeGroups.Album,
@@ -118,40 +153,40 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         });
 
         var allAlbums = new List<SimpleAlbum>();
-
-        // Pagina attraverso tutti gli album
         await foreach (var album in _client.Paginate(albumsPage))
         {
             allAlbums.Add(album);
         }
 
-        // 2. Per ogni album, controlla se contiene una traccia che inizia con startTrack
-        foreach (var album in allAlbums)
+        // Release dates are "YYYY", "YYYY-MM" or "YYYY-MM-DD", sortable as strings
+        foreach (var album in allAlbums.Where(a => a.AlbumType == "album").OrderBy(a => a.ReleaseDate))
         {
-            var tracksPage = await _client.Albums.GetTracks(album.Id, new AlbumTracksRequest
-            {
-                Limit = 50
-            });
-
-            bool found = false;
-
+            var tracksPage = await _client.Albums.GetTracks(album.Id, new AlbumTracksRequest { Limit = 50 });
             await foreach (var track in _client.Paginate(tracksPage))
             {
                 if (track.Name.StartsWith(startTrack, StringComparison.OrdinalIgnoreCase))
-                {
-                    found = true;
-                    break;
-                }
+                    return album;
             }
-
-            if (found)
-                matchingAlbums.Add(album);
         }
 
-        return matchingAlbums;
+        return null;
     }
 
-    public async Task<FullAlbum?> GetRealAlbum(FullTrack track)
+    /// <summary>
+    /// Returns the original studio album of a track (instead of a single or compilation), cached per album id
+    /// </summary>
+    public async Task<FullAlbum> GetRealAlbum(FullTrack track)
+    {
+        if (_albumCache.TryGetValue(track.Album.Id, out var cached))
+            return cached;
+
+        var album = await ResolveRealAlbum(track);
+        if (album != null)
+            _albumCache[track.Album.Id] = album;
+        return album;
+    }
+
+    private async Task<FullAlbum> ResolveRealAlbum(FullTrack track)
     {
         if (track.Album.AlbumType == "album")
         {
@@ -160,77 +195,66 @@ public class SpotifyPlayerListener : SpotifyServiceListener
 
         var search = await _client.Search.Item(new SearchRequest(SearchRequest.Types.Album, track.Album.Name)
         {
-            Limit = 50
+            Limit = SearchLimit
         });
 
-        var matchingAlbum = search.Albums.Items?
+        var matchingAlbum = search.Albums?.Items?
             .Where(a => a.AlbumType == "album") // esclude "single" e "compilation"
-            .FirstOrDefault(a => a.Artists.Any(artist => 
-                track.Artists.Any(trackArtist => 
-                    trackArtist.Id == artist.Id))); // confronta per ID, più affidabile del nome
+            .FirstOrDefault(a => a.Artists.Any(artist =>
+                track.Artists.Any(trackArtist =>
+                    trackArtist.Id == artist.Id))); // confronta per ID, piÃ¹ affidabile del nome
 
-        if (matchingAlbum == null)
+        if (matchingAlbum != null)
         {
-            var oldest_album = await GetOldestAlbumContainingTrack(track);
-            if (oldest_album != null)
-            {
-                return oldest_album;
-            }
-            else
-            {
-                // last try
-                var real_track_name = Regex.Replace(track.Name, @"[\(\[\{][^\)\]\}]*[\)\]\}]", "").Trim();
-                var albums = GetAlbumsWithTrackStartingWith(track.Artists[0].Id, real_track_name).GetAwaiter().GetResult();
-
-                var oldestAlbum = albums
-                    .Where(a => a.AlbumType == "album")
-                    .OrderBy(t => t.ReleaseDate)
-                    .First();
-
-                if (oldestAlbum != null)
-                {
-                    return await _client.Albums.Get(oldestAlbum.Id);
-                }
-
-                return await _client.Albums.Get(track.Album.Id);
-            }
+            // Ritorna il FullAlbum con tutte le immagini corrette
+            return await _client.Albums.Get(matchingAlbum.Id);
         }
-        // Ritorna il FullAlbum con tutte le immagini corrette
-        return await _client.Albums.Get(matchingAlbum.Id);
+
+        var oldestAlbum = await GetOldestAlbumContainingTrack(track);
+        if (oldestAlbum != null)
+        {
+            return oldestAlbum;
+        }
+
+        // last try
+        var realTrackName = Regex.Replace(track.Name, @"[\(\[\{][^\)\]\}]*[\)\]\}]", "").Trim();
+        var albumWithTrack = await GetOldestAlbumWithTrackStartingWith(track.Artists[0].Id, realTrackName);
+        return await _client.Albums.Get(albumWithTrack?.Id ?? track.Album.Id);
     }
 
-    public async Task<FullAlbum?> GetOldestAlbumContainingTrack(FullTrack track)
+    public async Task<FullAlbum> GetOldestAlbumContainingTrack(FullTrack track)
     {
         // Cerca la traccia per titolo e artista
         var artistName = track.Artists.FirstOrDefault()?.Name ?? "";
         var search = await _client.Search.Item(new SearchRequest(SearchRequest.Types.Track, $"{track.Name} artist:{artistName}")
         {
-            Limit = 50
+            Limit = SearchLimit
         });
 
-        if (search.Tracks.Items == null || !search.Tracks.Items.Any()) return null;
+        var items = search.Tracks?.Items;
+        if (items == null || items.Count == 0) return null;
 
         // Filtra solo le tracce che matchano esattamente per ID artista e nome
-        var matchingTracks = search.Tracks.Items
+        var sameSong = items
             .Where(t => t.Name.Equals(track.Name, StringComparison.OrdinalIgnoreCase))
             .Where(t => t.Artists.Any(a => track.Artists.Any(ta => ta.Id == a.Id)))
+            .ToList();
+
+        var matchingTracks = sameSong
             .Where(t => t.Artists.Count == 1)
             .Where(t => t.Album.AlbumType == "album") // solo album, no single/compilation
             .ToList();
 
-        if (!matchingTracks.Any())
+        if (matchingTracks.Count == 0)
         {
-            matchingTracks = search.Tracks.Items
-            .Where(t => t.Name.Equals(track.Name, StringComparison.OrdinalIgnoreCase))
-            .Where(t => t.Artists.Any(a => track.Artists.Any(ta => ta.Id == a.Id)))
-            //.Where(t => t.Album.AlbumType == "album")
-            .Where(t => t.Album.Images.Any(img => img.Width != null && img.Height != null && img.Width == img.Height)) // solo album con copertina quadrata
-            .ToList();
+            matchingTracks = sameSong
+                .Where(t => t.Album.Images.Any(img => img.Width == img.Height)) // solo album con copertina quadrata
+                .ToList();
 
-            if (!matchingTracks.Any()) return null;
+            if (matchingTracks.Count == 0) return null;
         }
 
-        // Trova l'album più vecchio confrontando le date di uscita
+        // Trova l'album piÃ¹ vecchio confrontando le date di uscita
         var oldestTrack = matchingTracks
             .OrderBy(t => t.Album.ReleaseDate) // formato "YYYY-MM-DD" o "YYYY", ordinabile come stringa
             .First();
@@ -238,219 +262,149 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         return await _client.Albums.Get(oldestTrack.Album.Id);
     }
 
-    public async Task<FullTrack> GetAlbumTrack(FullTrack track)
+    /// <summary>
+    /// Adds the current song to the main playlist (if not already there) and removes it from the "new" playlist
+    /// </summary>
+    public async Task AddSongToPlaylist()
     {
-        var search = await _client.Search.Item(new SearchRequest(SearchRequest.Types.Track, track.Name)
-        {
-            Limit = 10
-        });
-        var correctTrack = search.Tracks.Items
-        .Where(t =>
-            t.Artists.First().Id == track.Artists.First().Id &&
-            t.Album.AlbumType == "album").OrderBy(o => o.Album.ReleaseDate) // <-- chiave!
-        .FirstOrDefault();
-
-        if (correctTrack == null)
-        {
-            return track;
-        }
-        return correctTrack;
-    }
-
-    public async void AddSongToPlaylist()
-    {
-        var track = currentItem as FullTrack;
-        var item = new PlaylistAddItemsRequest(new List<string>() { track.Uri });
-        var itemRemove = new PlaylistRemoveItemsRequest();
-       
+        if (_currentItem is not FullTrack track)
+            return;
 
         bool addSong = true;
-        var pl = await _client.Playlists.Get(playlist);
-        var plNew = await _client.Playlists.Get(playlistNew);
-
-        int totalSongs = pl.Tracks.Total.Value;
-        int totalSongsNew = plNew.Tracks.Total.Value;
-
-        int loops = Convert.ToInt32(Math.Ceiling(totalSongs / (decimal)pl.Tracks.Limit.Value));
-        for (int i = 0; i < loops; i++)
+        try
         {
-            var req = new PlaylistGetItemsRequest(PlaylistGetItemsRequest.AdditionalTypes.Track);
-            req.Limit = pl.Tracks.Limit.Value;
-            req.Offset = i * req.Limit;
-            var q = req.BuildQueryParams();
-
-            var playlistItems = await _client.Playlists.GetItems(playlist, req);
-            foreach (var songInPlaylist in playlistItems.Items)
+            var firstPage = await _client.Playlists.GetPlaylistItems(playlist, new PlaylistGetItemsRequest(PlaylistGetItemsRequest.AdditionalTypes.Track)
             {
-                var song = songInPlaylist.Track as FullTrack;
-                if (song.Album.Name.Equals(track.Album.Name)
-                    && song.Name.Equals(track.Name)
-                    && song.Artists[0].Name.Equals(track.Artists[0].Name))
+                Limit = 100
+            });
+
+            await foreach (var songInPlaylist in _client.Paginate(firstPage))
+            {
+                if (songInPlaylist.Track is FullTrack song
+                    && (song.Uri == track.Uri
+                        || (song.Album.Name == track.Album.Name
+                            && song.Name == track.Name
+                            && song.Artists.FirstOrDefault()?.Name == track.Artists.FirstOrDefault()?.Name)))
                 {
                     addSong = false;
-                    i = loops;
                     break;
                 }
             }
-        }
 
-        if (addSong)
-        {
-            await _client.Playlists.AddItems(playlist, item);
-
-            // remove the item to the playlist
-            var itemsToRemove = new PlaylistRemoveItemsRequest
+            if (addSong)
             {
-                Tracks = new List<PlaylistRemoveItemsRequest.Item>
-                {
-                    new PlaylistRemoveItemsRequest.Item
-                    {
-                        Uri = track.Uri
-                    }
-                }
-            };
-            await _client.Playlists.RemoveItems(playlistNew, itemsToRemove);
-
+                await _client.Playlists.AddPlaylistItems(playlist, new PlaylistAddItemsRequest(new List<string> { track.Uri }));
+            }
         }
-        OnSongAddedToPlayList?.Invoke(addSong);
-    }
-
-    public static System.Timers.Timer SetIntervalThread(Action Act, float interval)
-    {
-        var tmr = new System.Timers.Timer();
-        tmr.Elapsed += (sender, args) => Act();
-        tmr.AutoReset = true;
-        tmr.Interval = interval;
-        tmr.Start();
-
-        return tmr;
-    }
-
-    protected virtual void PlayingItemChanged(IPlayableItem item)
-    {
-        // Override me.
-        currentItem = item;
-    }
-
-    private int MaxMin(int value, int min, int max)
-    {
-        if (value < min) return min;
-        if (value > max) return max;
-        return value;
-    }
-
-    private async void FetchLatestPlayer()
-    {
-        if (_client != null)
+        catch (Exception ex)
         {
-            // get the current context on this run
-            CurrentlyPlayingContext newContext = null;
+            ReportError("Add", ex);
+            return;
+        }
 
+        // Move semantics: remove from the source even if the song was already in the destination
+        var source = SourcePlaylist;
+        if (!string.IsNullOrEmpty(source))
+        {
             try
             {
-                newContext = await _client.Player.GetCurrentPlayback();
-
+                await RemoveFromPlaylist(source, track.Uri);
             }
             catch (Exception ex)
             {
-#if DEBUG
-                Console.WriteLine(ex.ToString());
-#endif
+                ReportError("Remove", ex);
                 return;
             }
-
-            // Check if not null
-            if (newContext != null && newContext.Item != null)
-            {
-                // Check and cast the item to the correct type
-                if (newContext.Item.Type == ItemType.Track)
-                {
-                    FullTrack currentTrack = newContext.Item as FullTrack;
-                    var duration = currentTrack.DurationMs;
-                    var progress = newContext.ProgressMs;
-                    var remain = duration - progress;
-                    var nextCheck = MaxMin(remain / 2, 500, 10000);
-
-                    OnSongPlaying?.Invoke(progress / (double)duration);
-
-                    tmrUpdate.Interval = nextCheck;
-                    OnSpotifyUpdate?.Invoke(++cntUpdate);
-
-                    // No previous track or previous item was different type 
-                    if (_currentItem == null || (_currentItem != null && _currentItem is FullEpisode episode))
-                    {
-                        //Console.WriteLine($"No prev track or new type | -> '{S4UUtility.GetTrackString(currentTrack)}'");
-                        Console.WriteLine($"-> {S4UUtility.GetTrackString(currentTrack)}");
-                        _currentItem = currentTrack;
-                        OnPlayingItemChanged?.Invoke(_currentItem);
-                    }
-                    else if (_currentItem != null && _currentItem is FullTrack lastTrack)
-                    {
-                        // Check if track name & artists aren't the same
-                        if (lastTrack.Name != currentTrack.Name || S4UUtility.HasArtistsChanged(lastTrack.Artists, currentTrack.Artists))
-                        {
-                            //Console.WriteLine($"Track to new Track | '{S4UUtility.GetTrackString(lastTrack)}' -> '{S4UUtility.GetTrackString(currentTrack)}'");
-                            Console.WriteLine($"-> {S4UUtility.GetTrackString(currentTrack)}"); 
-                            _currentItem = currentTrack;
-                            OnPlayingItemChanged?.Invoke(_currentItem);
-                        }
-                    }
-                }
-                else if (newContext.Item.Type == ItemType.Episode)
-                {
-                    FullEpisode currentEpisode = newContext.Item as FullEpisode;
-
-                    // If no previous item or current item is different type
-                    if (_currentItem == null || (_currentItem != null && _currentItem is FullTrack track))
-                    {
-                        Console.WriteLine($"No prev episode or new type | -> '{currentEpisode.Show.Publisher} {currentEpisode.Name}'");
-                        _currentItem = currentEpisode;
-                        OnPlayingItemChanged?.Invoke(_currentItem);
-                    }
-                    else if (_currentItem != null && _currentItem is FullEpisode lastEpisode)
-                    {
-                        if (lastEpisode.Name != currentEpisode.Name || lastEpisode.Show?.Publisher != currentEpisode.Show?.Publisher)
-                        {
-                            Console.WriteLine($"Episode to new Episode | '{lastEpisode.Show.Publisher} {lastEpisode.Name}' -> '{currentEpisode.Show.Publisher} {currentEpisode.Name}'");
-                            _currentItem = currentEpisode;
-                            OnPlayingItemChanged?.Invoke(_currentItem);
-                        }
-                    }
-                }
-            }
-            else
-            {
-                // No context or null current playing item
-
-                // If previous item has been set
-                if (_currentItem != null)
-                {
-                    Console.WriteLine($"Context null | '{(_currentItem.Type == ItemType.Track ? (_currentItem as FullTrack).Name : (_currentItem as FullEpisode).Name)}' -> ?");
-                    _currentItem = null;
-                    OnPlayingItemChanged?.Invoke(null);
-                }
-            }
-
-            _currentContext = newContext;
         }
-        else
-        {
-            // If no client but has a previous item, invoke event
-            if (_currentItem != null)
-            {
-                _currentItem = null;
-                OnPlayingItemChanged?.Invoke(null);
-            }
-        }
+
+        OnSongAddedToPlayList?.Invoke(addSong);
+    }
+
+    private void ReportError(string action, Exception ex)
+    {
+        var message = ex is APIException apiEx && apiEx.Response != null
+            ? $"{action}: {(int)apiEx.Response.StatusCode} {apiEx.Message}"
+            : $"{action}: {ex.Message}";
+        Console.WriteLine(message);
+        OnError?.Invoke(message);
+    }
+
+    private void SetCurrentItem(IPlayableItem item)
+    {
+        _currentItem = item;
+        OnPlayingItemChanged?.Invoke(item);
     }
 
     /// <summary>
-    /// Gets the current context of the spotify player
+    /// Polls the player and returns the delay in ms before the next poll
     /// </summary>
-    /// <returns></returns>
-    protected CurrentlyPlayingContext GetCurrentContext()
+    private async Task<int> FetchLatestPlayer()
     {
-        return _currentContext;
+        if (_client == null)
+        {
+            // If no client but has a previous item, invoke event
+            if (_currentItem != null)
+                SetCurrentItem(null);
+            return 1000;
+        }
+
+        CurrentlyPlayingContext newContext;
+        try
+        {
+            newContext = await _client.Player.GetCurrentPlayback();
+        }
+        catch (Exception ex)
+        {
+#if DEBUG
+            Console.WriteLine(ex.ToString());
+#endif
+            return 2000;
+        }
+
+        OnSpotifyUpdate?.Invoke(++cntUpdate);
+
+        _contextPlaylistId = newContext?.Context?.Type == "playlist"
+            ? newContext.Context.Uri?.Split(':').Last()
+            : null;
+
+        switch (newContext?.Item)
+        {
+            case FullTrack currentTrack:
+            {
+                var duration = currentTrack.DurationMs;
+                var progress = newContext.ProgressMs;
+                OnSongPlaying?.Invoke(duration > 0 ? progress / (double)duration : 0);
+
+                if (_currentItem is not FullTrack lastTrack
+                    || lastTrack.Name != currentTrack.Name
+                    || S4UUtility.HasArtistsChanged(lastTrack.Artists, currentTrack.Artists))
+                {
+                    Console.WriteLine($"-> {S4UUtility.GetTrackString(currentTrack)}");
+                    SetCurrentItem(currentTrack);
+                }
+
+                // Poll more often near the end of the song
+                return Math.Clamp((duration - progress) / 2, 500, 10000);
+            }
+
+            case FullEpisode currentEpisode:
+                if (_currentItem is not FullEpisode lastEpisode
+                    || lastEpisode.Name != currentEpisode.Name
+                    || lastEpisode.Show?.Name != currentEpisode.Show?.Name)
+                {
+                    Console.WriteLine($"-> {currentEpisode.Show?.Name} {currentEpisode.Name}");
+                    SetCurrentItem(currentEpisode);
+                }
+                return 5000;
+
+            default:
+                // No context or null current playing item
+                if (_currentItem != null)
+                {
+                    Console.WriteLine("-> nothing playing");
+                    SetCurrentItem(null);
+                }
+                return 5000;
+        }
     }
 }
-

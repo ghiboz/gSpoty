@@ -1,4 +1,4 @@
-using SpotifyAPI.Web;
+﻿using SpotifyAPI.Web;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -122,25 +122,6 @@ public class S4UUtility
         var date = track.Album.ReleaseDate.Split('-')[0];
 
         return $"{artists} - {track.Name} [{track.Album.Name} {date}]";
-    }
-
-    /// <summary>
-    /// Checks if the current user who provided authorization has Spotify Premium, allowing use to the Spotify API.
-    /// You still need to check the authorization scopes to see if you can access other areas of the API.
-    /// </summary>
-    /// <param name="client">The current client</param>
-    /// <returns>True if the user has premium, if the user's product property is "premium"</returns>
-    public static async Task<bool> IsUserPremium(SpotifyClient client)
-    {
-        if (client != null)
-        {
-            PrivateUser user = await client.UserProfile.Current();
-            if (user != null)
-            {
-                return user.Product == "premium";
-            }
-        }
-        return false;
     }
 
     /// <summary>

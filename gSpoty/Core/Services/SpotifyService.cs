@@ -274,8 +274,8 @@ public class SpotifyService : SceneSingleton<SpotifyService>
         {
             try
             {
-                var newReleases = await _client.Browse.GetNewReleases();
-                if (newReleases != null)
+                var user = await _client.UserProfile.Current();
+                if (user != null)
                 {
                     //Debug.Log("Confirmation request success!");
                     return;

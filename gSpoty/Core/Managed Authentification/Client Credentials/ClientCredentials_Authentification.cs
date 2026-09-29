@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using SpotifyAPI.Web;
 using System;
 using System.IO;
@@ -8,8 +8,6 @@ public class ClientCredentials_Authorization : IServiceAuthenticator
     public event Action<object> OnAuthenticatorComplete;
 
     private ClientCredentials_AuthConfig _authConfig;
-
-    private ClientCredentialsTokenResponse _token;
 
     private IAuthenticator _ccAuthenticator;
 

@@ -1,20 +1,15 @@
 ﻿using Newtonsoft.Json;
+using SpotifyAPI.Web;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Text;
+using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using System.Windows.Shell;
 
 namespace gSpoty
@@ -28,10 +23,9 @@ namespace gSpoty
         }
         public void Execute(object parameter)
         {
-            if (Executed != null)
-                Executed(this, parameter);
+            Executed?.Invoke(this, parameter);
         }
-        public event EventHandler CanExecuteChanged;
+        public event EventHandler CanExecuteChanged { add { } remove { } }
     }
 
 
@@ -40,30 +34,28 @@ namespace gSpoty
     /// </summary>
     public partial class MainWindow : Window
     {
-        int imgSize = 100;
-        int imgSizeBig = 640;
+        const string NoTrackText = "Please play this song on the radio";
+        const int imgSizeBig = 640;
+
+        static readonly HttpClient http = new HttpClient();
+        static readonly Regex invalidFileChars = new Regex(
+            string.Format(@"([{0}]*\.+$)|([{0}]+)", Regex.Escape(new string(Path.GetInvalidFileNameChars()))),
+            RegexOptions.Compiled);
+
         int BKG_ADD = 400;
         string coverFolder = "Cover";
-        SpotifyPlayerListener listener;
+        readonly SpotifyPlayerListener listener;
 
         bool inBackground = false;
+        string lastError;
         public MainWindow()
         {
             string[] args = Environment.GetCommandLineArgs();
-            inBackground = args.Contains("-BACKGROUND");
-
-            if (inBackground)
+            int bkgIndex = Array.IndexOf(args, "-BACKGROUND");
+            inBackground = bkgIndex >= 0;
+            if (inBackground && bkgIndex + 1 < args.Length)
             {
-                bool nextOne = false;
-                foreach (var item in args)
-                {
-                    if (nextOne)
-                    {
-                        Int32.TryParse(item, out BKG_ADD);
-                        break;
-                    }
-                    nextOne = item == "-BACKGROUND";
-                }
+                int.TryParse(args[bkgIndex + 1], out BKG_ADD);
             }
 
             int margin = 10;
@@ -88,144 +80,122 @@ namespace gSpoty
 
             string cfg = File.ReadAllText("spotify.json");
             var authConfig = JsonConvert.DeserializeObject<ClientCredentials_AuthConfig>(cfg);
-            var playlist = authConfig.PlayList;
-            var playlistNew = authConfig.PlayListNew;
-
-            imgSize = (int)imgMain.Width;
-            listener = new SpotifyPlayerListener(playlist, playlistNew);
-            listener.OnPlayingItemChanged += Listener_OnPlayingItemChanged;
-            listener.OnSpotifyUpdate += Listener_OnSpotifyUpdate;
-            listener.OnSongAddedToPlayList += Listener_OnSongAddedToPlayList;
-            listener.OnSongPlaying += Listener_OnSongPlaying;
             if (!string.IsNullOrEmpty(authConfig.CoverFolder))
             {
                 coverFolder = authConfig.CoverFolder;
             }
+
+            listener = new SpotifyPlayerListener(authConfig.PlayList, authConfig.PlayListNew);
+            listener.OnPlayingItemChanged += Listener_OnPlayingItemChanged;
+            listener.OnSpotifyUpdate += Listener_OnSpotifyUpdate;
+            listener.OnSongAddedToPlayList += Listener_OnSongAddedToPlayList;
+            listener.OnSongPlaying += Listener_OnSongPlaying;
+            listener.OnError += Listener_OnError;
         }
+
+        void OnUI(Action action) => Dispatcher.BeginInvoke(action);
 
         private void Listener_OnSongPlaying(double value)
         {
-            tbInfo.Dispatcher.BeginInvoke(new Action(() =>
+            OnUI(() =>
             {
                 tbInfo.ProgressState = TaskbarItemProgressState.Normal;
                 tbInfo.ProgressValue = value;
-            }));
+            });
         }
 
         private void Listener_OnSongAddedToPlayList(bool hasAdded)
         {
-            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
-            { 
-                lblUpdate.Foreground = hasAdded ? Brushes.Lime : Brushes.Orange;
-            }));
+            OnUI(() => lblUpdate.Foreground = hasAdded ? Brushes.Lime : Brushes.Orange);
+        }
+
+        private void Listener_OnError(string message)
+        {
+            OnUI(() =>
+            {
+                lblUpdate.Foreground = Brushes.Red;
+                lblUpdate.ToolTip = message;
+                lastError = message;
+            });
         }
 
         private void Listener_OnSpotifyUpdate(int obj)
         {
-            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
-            {
-                lblUpdate.Text = $"♦{obj}♦";
-            }));
+            OnUI(() => lblUpdate.Text = lastError == null ? $"♦{obj}♦" : $"♦{obj}♦  {lastError}");
         }
 
-        private void Listener_OnPlayingItemChanged(SpotifyAPI.Web.IPlayableItem obj)
+        private async void Listener_OnPlayingItemChanged(IPlayableItem obj)
         {
-            var track = obj as SpotifyAPI.Web.FullTrack;
-            if (track == null)
+            if (obj is not FullTrack track)
             {
-                lblMain.Dispatcher.BeginInvoke(new Action(() =>
+                OnUI(() =>
                 {
-                    lblMain.Text = "Please play this song on the radio";
-                }));
-
-                imgMain.Dispatcher.BeginInvoke(new Action(() =>
-                {
+                    lblMain.Text = NoTrackText;
                     imgMain.Source = null;
-                }
-                ));
-
-                lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
-                {
                     lblUpdate.Foreground = Brushes.White;
-                }));
-
+                    tbInfo.ProgressState = TaskbarItemProgressState.None;
+                });
                 return;
             }
-            var newLbl = $"{S4UUtility.GetTrackString(track)}";
 
-            //lblMain.Dispatcher  .Text = $"{S4UUtility.GetTrackString(obj as SpotifyAPI.Web.FullTrack)}";
-
-            lblMain.Dispatcher.BeginInvoke(new Action(() =>
+            var newLbl = S4UUtility.GetTrackString(track);
+            OnUI(() =>
             {
                 lblMain.Text = newLbl;
-            }));
-
-            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
-            {
                 lblUpdate.Foreground = Brushes.White;
-            }));
+            });
 
-            // var realTrack = listener.GetAlbumTrack(track).GetAwaiter().GetResult();
-            
-            // img 
-            //var album = listener.GetAlbum(track.Album.Id).GetAwaiter().GetResult();
-            var album = listener.GetRealAlbum(track).GetAwaiter().GetResult();
-            if (album != null)
+            try
             {
-                var albumOnlyImages = album.Images;
-                //                    .Where(img => img.Width == null || img.Height == null || img.Width == img.Height)
-                //                    .ToList();
-
-                //var img = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSize, imgSize);
-                //            var imgBig = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSizeBig, imgSizeBig);
-                var imgBig = S4UUtility.GetLowestResolutionImage(albumOnlyImages, imgSizeBig, imgSizeBig);
-
-                // Fallback a tutte le immagini se il filtro svuota la lista
-                if (imgBig == null)
-                    imgBig = S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSizeBig, imgSizeBig);
-
-                var ar = GetNameClean(album.Artists.FirstOrDefault().Name);
-                var al = GetNameClean(album.Name);
-
-                if (ar.StartsWith("The "))
-                {
-                    ar = ar.Substring(4);
-                }
-
-                imgMain.Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    BitmapImage bitmap = new BitmapImage();
-                    bitmap.BeginInit();
-                    bitmap.UriSource = new Uri(imgBig.Url, UriKind.Absolute);
-                    bitmap.EndInit();
-                    imgMain.Source = bitmap;
-
-                    var fileName = $@"{coverFolder}\{ar} - {al}.jpg";
-                    CheckPath(fileName);
-                    using (WebClient client = new WebClient())
-                    {
-                        client.DownloadFileAsync(new Uri(imgBig.Url, UriKind.Absolute), fileName);
-                    }
-                }
-                ));
+                await UpdateCover(track);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Cover update failed: {ex.Message}");
             }
         }
 
-        string GetNameClean(string src)
+        private async Task UpdateCover(FullTrack track)
         {
-            string invalidChars = System.Text.RegularExpressions.Regex.Escape(new string(System.IO.Path.GetInvalidFileNameChars()));
-            string invalidRegStr = string.Format(@"([{0}]*\.+$)|([{0}]+)", invalidChars);
+            var album = await listener.GetRealAlbum(track);
+            if (album == null)
+                return;
 
-            return System.Text.RegularExpressions.Regex.Replace(src, invalidRegStr, "_");
+            var imgBig = S4UUtility.GetLowestResolutionImage(album.Images, imgSizeBig, imgSizeBig)
+                // Fallback alle immagini della traccia se l'album non ne ha
+                ?? S4UUtility.GetLowestResolutionImage(track.Album.Images, imgSizeBig, imgSizeBig);
+            if (imgBig == null)
+                return;
+
+            var ar = GetNameClean(album.Artists.FirstOrDefault()?.Name ?? "Unknown");
+            var al = GetNameClean(album.Name);
+            if (ar.StartsWith("The "))
+            {
+                ar = ar.Substring(4);
+            }
+
+            // Download once: the same bytes feed both the UI and the cover file
+            var bytes = await http.GetByteArrayAsync(imgBig.Url);
+            Directory.CreateDirectory(coverFolder);
+            await File.WriteAllBytesAsync(Path.Combine(coverFolder, $"{ar} - {al}.jpg"), bytes);
+
+            // The song may have changed while we were resolving the album
+            if (listener.CurrentItem != track)
+                return;
+
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.StreamSource = new MemoryStream(bytes);
+            bitmap.EndInit();
+            bitmap.Freeze();
+            OnUI(() => imgMain.Source = bitmap);
+
         }
 
-        void CheckPath(string path)
+        static string GetNameClean(string src)
         {
-            var folder = System.IO.Path.GetDirectoryName(path);
-            if (!Directory.Exists(folder))
-            {
-                Directory.CreateDirectory(folder);
-            }
+            return invalidFileChars.Replace(src, "_");
         }
 
         private void imgMain_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
@@ -242,40 +212,30 @@ namespace gSpoty
             white = !white;
         }
 
-        private void lblUpdate_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+        private void ClearError()
         {
-            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
-            {
-                lblUpdate.Foreground = Brushes.DodgerBlue;
-            }));
-            listener.AddSongToPlaylist();
+            lastError = null;
+            lblUpdate.ToolTip = null;
         }
 
-        private void DoubleClickOnImage(object sender, object e)
+        private async void AddSong()
         {
-            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
-            {
-                lblUpdate.Foreground = Brushes.DodgerBlue;
-            }));
-            listener.AddSongToPlaylist();
+            ClearError();
+            lblUpdate.Foreground = Brushes.DodgerBlue;
+            await listener.AddSongToPlaylist();
         }
 
-        private void Add_Click(object sender, RoutedEventArgs e)
-        {
-            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
-            {
-                lblUpdate.Foreground = Brushes.DodgerBlue;
-            }));
-            listener.AddSongToPlaylist();
-        }
+        private void lblUpdate_MouseRightButtonUp(object sender, MouseButtonEventArgs e) => AddSong();
 
-        private void Remove_Click(object sender, RoutedEventArgs e)
+        private void DoubleClickOnImage(object sender, object e) => AddSong();
+
+        private void Add_Click(object sender, RoutedEventArgs e) => AddSong();
+
+        private async void Remove_Click(object sender, RoutedEventArgs e)
         {
-            lblUpdate.Dispatcher.BeginInvoke(new Action(() =>
-            {
-                lblUpdate.Foreground = Brushes.OrangeRed;
-            }));
-            listener.RemoveSongFromPlaylist();
+            ClearError();
+            lblUpdate.Foreground = Brushes.OrangeRed;
+            await listener.RemoveSongFromPlaylist();
         }
     }
 }

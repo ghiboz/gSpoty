@@ -23,8 +23,9 @@
   ],
   "ClientSecret": "",
   "ClientID": "",
-  "RedirectUri": "http://localhost:5000/callback",
+  "RedirectUri": "http://127.0.0.1:5000/callback",
   "ServerPort": 5000,
   "PlayList": "...",
+  "PlayListNew": "...",
   "CoverFolder": "..."
 }
