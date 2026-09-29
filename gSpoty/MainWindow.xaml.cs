@@ -59,11 +59,12 @@ namespace gSpoty
             }
 
             int margin = 10;
+            int bottomOffset = 30;
             SizeChanged += (o, e) =>
             {
                 var r = SystemParameters.WorkArea;
                 Left = r.Right - ActualWidth - margin;
-                Top = r.Bottom - ActualHeight - margin;
+                Top = r.Bottom - ActualHeight - margin - bottomOffset;
             };
 
             InitializeComponent();
