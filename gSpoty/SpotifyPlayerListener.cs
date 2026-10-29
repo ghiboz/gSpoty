@@ -1,4 +1,4 @@
-﻿using SpotifyAPI.Web;
+using SpotifyAPI.Web;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -50,6 +50,14 @@ public class SpotifyPlayerListener : SpotifyServiceListener
     {
         this.playlist = playlist;
         this.playlistNew = playlistNew;
+        this.OnPlayingItemChanged += PlayingItemChanged;
+
+        // se il servizio si � gi� connesso prima della mia iscrizione
+        var existing = SpotifyService.Instance.GetSpotifyClient();
+        if (existing != null)
+        {
+            OnSpotifyConnectionChanged(existing);
+        }
     }
 
     public IPlayableItem CurrentItem => _currentItem;
@@ -65,6 +73,9 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         base.OnSpotifyConnectionChanged(client);
 
         _client = client;
+        if (client != null && _isInvoking) return;   // <-- nuova riga: gi� in ascolto
+
+
         // Start internal update loop
         if (_client != null && UpdateFrequencyMS > 0)
         {
