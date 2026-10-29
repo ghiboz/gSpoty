@@ -146,6 +146,7 @@ public class SpotifyService : SceneSingleton<SpotifyService>
     /// </summary>
     public void AuthorizeUser()
     {
+        Console.WriteLine($"AuthorizeUser: client={_client != null}, authenticator={_authenticator?.GetType().Name}");
         // Dont need to authorize if already done
         if (_client != null)
             return;
@@ -202,6 +203,7 @@ public class SpotifyService : SceneSingleton<SpotifyService>
 
     private async void OnAuthenticatorComplete(object authObject)
     {
+        Console.WriteLine($"OnAuthenticatorComplete: {authObject?.GetType().Name ?? "null"}");
         if (authObject != null)
         {
             // Get config from authenticator

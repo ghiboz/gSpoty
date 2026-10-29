@@ -48,6 +48,13 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         this.playlist = playlist;
         this.playlistNew = playlistNew;
         this.OnPlayingItemChanged += PlayingItemChanged;
+
+        // se il servizio si è già connesso prima della mia iscrizione
+        var existing = SpotifyService.Instance.GetSpotifyClient();
+        if (existing != null)
+        {
+            OnSpotifyConnectionChanged(existing);
+        }
     }
 
     protected override void OnSpotifyConnectionChanged(SpotifyClient client)
@@ -55,6 +62,9 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         base.OnSpotifyConnectionChanged(client);
 
         _client = client;
+        if (client != null && _isInvoking) return;   // <-- nuova riga: già in ascolto
+
+
         // Start internal update loop
         if (_client != null && UpdateFrequencyMS > 0)
         {
