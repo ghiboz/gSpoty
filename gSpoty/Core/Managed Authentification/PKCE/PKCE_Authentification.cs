@@ -32,6 +32,8 @@ public class PKCE_Authentification : IServiceAuthenticator
 
     private List<Action> _dispatcher = new List<Action>();
 
+    private string _lastRefreshToken;
+
     private void Update()
     {
         if (_dispatcher.Count > 0)
@@ -126,7 +128,7 @@ public class PKCE_Authentification : IServiceAuthenticator
         if (PKCEConfig != null)
         {
             _pkceToken = LoadPKCEToken();
-            return _pkceToken != null;
+            return _pkceToken != null && !string.IsNullOrEmpty(_pkceToken.RefreshToken);
         }
         return false;
     }
@@ -194,6 +196,7 @@ public class PKCE_Authentification : IServiceAuthenticator
 
     private void SetAuthenticator(PKCETokenResponse token)
     {
+        _lastRefreshToken = token.RefreshToken;   // <-- nuova riga
         // Set API authentification once recieved
         _pkceAuthenticator = new PKCEAuthenticator(_clientID, token);
         _pkceAuthenticator.TokenRefreshed += this.OnTokenRefreshed;
@@ -203,6 +206,16 @@ public class PKCE_Authentification : IServiceAuthenticator
 
     private void OnTokenRefreshed(object sender, PKCETokenResponse token)
     {
+        // Spotify può non rimandare il refresh token: conserva quello vecchio
+        if (string.IsNullOrEmpty(token.RefreshToken))
+        {
+            token.RefreshToken = _lastRefreshToken;
+        }
+        else
+        {
+            _lastRefreshToken = token.RefreshToken;
+        }
+
         DateTime expireDT = S4UUtility.GetTokenExpiry(token.CreatedAt, token.ExpiresIn);
         Console.WriteLine($"PKCE token refreshed | Expires at '{expireDT.ToLocalTime()}'");
 

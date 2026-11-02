@@ -48,6 +48,8 @@ namespace gSpoty
 
         bool inBackground = false;
         string lastError;
+        bool busy;
+
         public MainWindow()
         {
             string[] args = Environment.GetCommandLineArgs();
@@ -219,7 +221,7 @@ namespace gSpoty
             lblUpdate.ToolTip = null;
         }
 
-        private async void AddSong()
+        private async void AddSong_OLD()
         {
             ClearError();
             lblUpdate.Foreground = Brushes.DodgerBlue;
@@ -232,11 +234,30 @@ namespace gSpoty
 
         private void Add_Click(object sender, RoutedEventArgs e) => AddSong();
 
+        private async void AddSong()
+        {
+            if (busy) return;
+            busy = true;
+            try
+            {
+                ClearError();
+                lblUpdate.Foreground = Brushes.DodgerBlue;
+                await listener.AddSongToPlaylist();
+            }
+            finally { busy = false; }
+        }
+
         private async void Remove_Click(object sender, RoutedEventArgs e)
         {
-            ClearError();
-            lblUpdate.Foreground = Brushes.OrangeRed;
-            await listener.RemoveSongFromPlaylist();
+            if (busy) return;
+            busy = true;
+            try
+            {
+                ClearError();
+                lblUpdate.Foreground = Brushes.OrangeRed;
+                await listener.RemoveSongFromPlaylist();
+            }
+            finally { busy = false; }
         }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json;
 using SpotifyAPI.Web;
+using SpotifyAPI.Web.Http;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -200,6 +201,17 @@ public class SpotifyService : SceneSingleton<SpotifyService>
         }
     }
 
+    private static SpotifyClientConfig CreateConfigWithRetry()
+    {
+        return SpotifyClientConfig.CreateDefault()
+            .WithRetryHandler(new SimpleRetryHandler
+            {
+                RetryAfter = TimeSpan.FromSeconds(1),
+                RetryTimes = 3,
+                TooManyRequestsConsumesARetry = false
+            });
+    }
+
     private async void OnAuthenticatorComplete(object authObject)
     {
         if (authObject != null)
@@ -207,11 +219,11 @@ public class SpotifyService : SceneSingleton<SpotifyService>
             // Get config from authenticator
             if (authObject is IAuthenticator apiAuthenticator)
             {
-                _defaultConfig = SpotifyClientConfig.CreateDefault().WithAuthenticator(apiAuthenticator);
+                _defaultConfig = CreateConfigWithRetry().WithAuthenticator(apiAuthenticator);
             }
             else if (authObject is string authToken)
             {
-                _defaultConfig = SpotifyClientConfig.CreateDefault().WithToken(authToken);
+                _defaultConfig = CreateConfigWithRetry().WithToken(authToken);
             }
             else
             {

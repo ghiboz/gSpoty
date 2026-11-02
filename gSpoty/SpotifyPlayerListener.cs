@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 /// <summary>
@@ -46,11 +47,148 @@ public class SpotifyPlayerListener : SpotifyServiceListener
     // Original album id -> resolved "real" album
     private readonly ConcurrentDictionary<string, FullAlbum> _albumCache = new ConcurrentDictionary<string, FullAlbum>();
 
+    private readonly SemaphoreSlim _playlistLock = new SemaphoreSlim(1, 1);
+
     public SpotifyPlayerListener(string playlist, string playlistNew)
     {
         this.playlist = playlist;
         this.playlistNew = playlistNew;
+
+        var existing = SpotifyService.Instance.GetSpotifyClient();
+        if (existing != null)
+        {
+            OnSpotifyConnectionChanged(existing);
+        }
     }
+
+    private static void Log(string msg)
+    {
+        try { System.IO.File.AppendAllText("gspoty.log", $"{DateTime.Now:HH:mm:ss.fff} {msg}\r\n"); }
+        catch { }
+    }
+
+    private static bool SameTrack(FullTrack a, FullTrack b) =>
+    a.Uri == b.Uri ||
+    (string.Equals(a.Name, b.Name, StringComparison.OrdinalIgnoreCase)
+     && string.Equals(a.Album?.Name, b.Album?.Name, StringComparison.OrdinalIgnoreCase)
+     && string.Equals(a.Artists.FirstOrDefault()?.Name, b.Artists.FirstOrDefault()?.Name,
+                      StringComparison.OrdinalIgnoreCase));
+
+    // URI di tutte le occorrenze del brano dentro una playlist
+    private async Task<List<string>> FindUris(string playlistId, FullTrack track)
+    {
+        var uris = new List<string>();
+        var first = await _client.Playlists.GetPlaylistItems(playlistId,
+            new PlaylistGetItemsRequest(PlaylistGetItemsRequest.AdditionalTypes.Track) { Limit = 100 });
+        await foreach (var it in _client.Paginate(first))
+        {
+            if (it.Track is FullTrack s && SameTrack(s, track))
+                uris.Add(s.Uri);
+        }
+        return uris.Distinct().ToList();
+    }
+
+    // Prova la playlist in ascolto, poi playlistNew. Ritorna quanti brani ha rimosso.
+    private async Task<(int removed, bool failed)> RemoveFromSources(FullTrack track, string ctx, string action)
+    {
+        var candidates = new List<string>();
+        if (!string.IsNullOrEmpty(ctx) && ctx != playlist) candidates.Add(ctx);
+        if (!string.IsNullOrEmpty(playlistNew) && !candidates.Contains(playlistNew)) candidates.Add(playlistNew);
+
+        bool failed = false;
+        foreach (var pl in candidates)
+        {
+            try
+            {
+                var uris = await FindUris(pl, track);
+                Log($"{action}: '{track.Name}' ({track.Uri}) in {pl}: trovati {uris.Count}");
+                if (uris.Count == 0) continue;
+
+                await _client.Playlists.RemovePlaylistItems(pl, new PlaylistRemoveItemsRequestV2
+                {
+                    Items = uris.Select(u => new PlaylistRemoveItemsRequestV2.Item { Uri = u }).ToList()
+                });
+
+                var left = await FindUris(pl, track);   // solo per il log
+                Log($"{action}: rimossi {uris.Count} da {pl}, rimasti {left.Count}");
+                return (uris.Count, failed);
+            }
+            catch (Exception ex)
+            {
+                failed = true;
+                Log($"{action}: errore su {pl}: {ex}");
+                ReportError(action, ex);
+            }
+        }
+        return (0, failed);
+    }
+
+    public async Task RemoveSongFromPlaylist()
+    {
+        var track = _currentItem as FullTrack;
+        var ctx = _contextPlaylistId;               // catturati subito
+        if (track == null) { ReportError("Remove", new Exception("nessun brano in riproduzione")); return; }
+
+        await _playlistLock.WaitAsync();
+        try
+        {
+            var (removed, failed) = await RemoveFromSources(track, ctx, "Remove");
+            if (removed == 0 && !failed)
+                ReportError("Remove", new Exception("brano non trovato nelle playlist sorgente"));
+        }
+        finally { _playlistLock.Release(); }
+    }
+
+    public async Task AddSongToPlaylist()
+    {
+        var track = _currentItem as FullTrack;
+        var ctx = _contextPlaylistId;
+        if (track == null) { ReportError("Add", new Exception("nessun brano in riproduzione")); return; }
+
+        await _playlistLock.WaitAsync();
+        try
+        {
+            bool added = false;
+            try
+            {
+                var existing = await FindUris(playlist, track);
+                Log($"Add: '{track.Name}' già in destinazione: {existing.Count}");
+                if (existing.Count == 0)
+                {
+                    await _client.Playlists.AddPlaylistItems(playlist,
+                        new PlaylistAddItemsRequest(new List<string> { track.Uri }));
+                    added = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Add: errore {ex}");
+                ReportError("Add", ex);
+                return;
+            }
+
+            var (removed, failed) = await RemoveFromSources(track, ctx, "Add/remove");
+            if (failed) return;                     // errore già mostrato in rosso
+            OnSongAddedToPlayList?.Invoke(added);
+        }
+        finally { _playlistLock.Release(); }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     public IPlayableItem CurrentItem => _currentItem;
 
@@ -65,6 +203,8 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         base.OnSpotifyConnectionChanged(client);
 
         _client = client;
+        if (client != null && _isInvoking) return;
+
         // Start internal update loop
         if (_client != null && UpdateFrequencyMS > 0)
         {
@@ -113,7 +253,7 @@ public class SpotifyPlayerListener : SpotifyServiceListener
         }
     }
 
-    public async Task RemoveSongFromPlaylist()
+    public async Task RemoveSongFromPlaylist_OLD()
     {
         var source = SourcePlaylist;
         if (_currentItem is not FullTrack track || string.IsNullOrEmpty(source))
@@ -265,7 +405,7 @@ public class SpotifyPlayerListener : SpotifyServiceListener
     /// <summary>
     /// Adds the current song to the main playlist (if not already there) and removes it from the "new" playlist
     /// </summary>
-    public async Task AddSongToPlaylist()
+    public async Task AddSongToPlaylist_OLD()
     {
         if (_currentItem is not FullTrack track)
             return;
